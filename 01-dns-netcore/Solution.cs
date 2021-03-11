@@ -41,9 +41,8 @@ namespace dns_netcore
                     };
                 });
 
-                var results = Task.WhenAll(tasks).Result;
-                var incorrect = results.TakeWhile(r => r.Addr == null).Select(r => r.Domain).Reverse();
-                var resolver = results.Select(r => r.Addr).FirstOrDefault(addr => addr != null) ?? baseResolver; 
+                var incorrect = tasks.TakeWhile(r => r.Result.Addr == null).Select(r => r.Result.Domain).Reverse();
+                var resolver = tasks.Select(r => r.Result.Addr).FirstOrDefault(addr => addr != null) ?? baseResolver; 
 
                 foreach (var sub in incorrect)
                 {
