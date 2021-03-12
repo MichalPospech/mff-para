@@ -19,36 +19,30 @@ namespace dns_netcore
 
         public Task<IP4Addr> ResolveRecursive(string domain)
         {
-            /*
-			 * Just copy-pasted code from serial resolver.
-			 * Replace it with your implementation.
-			 * Also you may change this method to async (it will work with the interface).
-			 */
-
             return Task.Run(() =>
-            { 
+            {
                 var baseResolver = dnsClient.GetRootServers().First();
 
                 var subdomains = DomainToSubdomains(domain).Reverse();
-                var tasks = subdomains.Select(async sd =>
+                var tasks = subdomains.Select(sd => Task.Run(() =>
                 {
 
-                    var result = await CacheLookup(sd.Domain);
+                    var result = CacheLookup(sd.Domain).Result;
                     return new
                     {
                         Addr = result,
                         Domain = sd
                     };
-                });
+                }));
 
                 var incorrect = tasks.TakeWhile(r => r.Result.Addr == null).Select(r => r.Result.Domain).Reverse();
-                var resolver = tasks.Select(r => r.Result.Addr).FirstOrDefault(addr => addr != null) ?? baseResolver; 
+                var resolver = tasks.Select(r => r.Result.Addr).FirstOrDefault(addr => addr != null) ?? baseResolver;
 
                 foreach (var sub in incorrect)
                 {
                     var t = dnsClient.Resolve(resolver, sub.LowestLevel);
                     resolver = t.Result;
-					cache.TryAdd(sub.Domain, resolver);
+                    cache.TryAdd(sub.Domain, resolver);
                 }
                 return resolver;
             });
