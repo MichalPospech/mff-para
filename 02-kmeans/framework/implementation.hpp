@@ -5,35 +5,45 @@
 #include <exception.hpp>
 #include "tbb/tbb.h"
 #include <math.h>
+#include <iostream>
 
 template <typename POINT = point_t, typename ASGN = std::uint8_t, bool DEBUG = false>
 class KMeans : public IKMeans<POINT, ASGN, DEBUG>
 {
-	std::vector<double> distances;
+	using coord_t = typename POINT::coord_t;
+	std::vector<coord_t> distances;
 	std::size_t k;
 	std::size_t points;
 
+	coord_t distance(const POINT &point, const POINT &centroid)
+	{
+		std::int64_t dx = (std::int64_t)point.x - (std::int64_t)centroid.x;
+		std::int64_t dy = (std::int64_t)point.y - (std::int64_t)centroid.y;
+		return (coord_t)(dx * dx + dy * dy);
+	}
+
 	void assign_cluster(const std::vector<POINT> &centroids, const std::vector<POINT> &points, std::size_t point_index, std::vector<ASGN> &assignments)
 	{
-		auto offset = k * point_index;
 		auto point = points[point_index];
-
-		tbb::parallel_for(tbb::blocked_range<std::size_t>(0, centroids.size()), [&, offset, point](auto &&range) {
-			for (auto i = range.begin(); i != range.end(); ++i)
-				distances[offset + i] = std::sqrt(std::pow(centroids[i].x - point.x, 2.0) + std::pow(centroids[i].y - point.y, 2.0));
-		});
-
-		auto cluster_index = distances.begin() + offset - std::min_element(distances.begin() + offset, distances.begin() + offset + k);
-		assignments[point_index] = cluster_index;
+		coord_t minDist = distance(point, centroids[0]);
+		std::size_t nearest = 0;
+		for (std::size_t i = 1; i < centroids.size(); ++i) {
+			coord_t dist = distance(point, centroids[i]);
+			if (dist < minDist) {
+				minDist = dist;
+				nearest = i;
+			}
+		}
+		assignments[point_index] = nearest;
 	}
 
 	class cluster
 	{
+
+	public:
 		POINT original;
 		std::size_t count;
 		POINT total;
-
-	public:
 		void add(const POINT &point)
 		{
 			total.x += point.x;
@@ -55,23 +65,27 @@ class KMeans : public IKMeans<POINT, ASGN, DEBUG>
 
 	class reduce_chunk
 	{
-		std::vector<cluster> clusters;
+		const std::vector<POINT> *points;
+		const std::vector<ASGN> *assignments;
 
 	public:
-		reduce_chunk(reduce_chunk &chunk, tbb::split) : clusters(chunk.clusters.size())
+		std::vector<cluster> clusters;
+		reduce_chunk(std::size_t centroid_num, const std::vector<POINT> *points, const std::vector<ASGN> *assignments) : points(points), assignments(assignments), clusters(centroid_num) {}
+
+		reduce_chunk(reduce_chunk &chunk, tbb::split) : points(chunk.points), assignments(chunk.assignments), clusters(chunk.clusters.size())
 		{
 			for (std::size_t i = 0; i < clusters.size(); i++)
 			{
-				clusters[i].original += chunk.clusters[i].original;
+				clusters[i].original = chunk.clusters[i].original;
 			}
 		}
-
-		void operator()<TRange>(const TRange &range)
+		template <typename TRange>
+		void operator()(const TRange &range)
 		{
-			for (auto i = range.begin(); i != range.end(); ++i){
-				
+			for (auto i = range.begin(); i != range.end(); ++i)
+			{
+				/clusters[(*assignments)[i]].add((*points)[i]);
 			}
-				
 		}
 
 		void join(reduce_chunk &chunk)
@@ -95,7 +109,9 @@ public:
 	virtual void
 	init(std::size_t points, std::size_t k, std::size_t iters)
 	{
-		distances = std::vector<double>(points * k);
+		distances = std::vector<coord_t>(points * k);
+		this->k = k;
+		this->points = points;
 	}
 
 	/*
@@ -112,17 +128,22 @@ public:
 	virtual void compute(const std::vector<POINT> &points, std::size_t k, std::size_t iters,
 						 std::vector<POINT> &centroids, std::vector<ASGN> &assignments)
 	{
+		centroids.resize(k);
+		std::copy(points.begin(), points.begin() + k, centroids.begin());
+		assignments.resize(points.size());
 		for (std::size_t i = 0; i < iters; i++)
 		{
-			tbb::parallel_for(tbb::blocked_range<std::size_t>(0, points.size()), [&](auto &&range) {
+			tbb::parallel_for(tbb::blocked_range<std::size_t>(0, points.size(), 1024), [&](auto &&range) {
 				for (auto i = range.begin(); i != range.end(); ++i)
 					assign_cluster(centroids, points, i, assignments);
 			});
+			auto reducer = reduce_chunk(k, &points, &assignments);
+			tbb::parallel_reduce(tbb::blocked_range<std::size_t>(0, points.size(), 1024), reducer);
+			for (size_t i = 0; i < k; i++)
+			{
+				centroids[i] = reducer.clusters[i].get_new_centroid();
+			}
 		}
-
-		std::copy(points.begin(), points.begin() + k, centroids.begin());
-		assign_cluster(centroids, points, 0, assignments);
-		throw bpp::RuntimeError("Solution not implemented yet.");
 	}
 };
 
