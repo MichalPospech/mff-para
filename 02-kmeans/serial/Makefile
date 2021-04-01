@@ -1,4 +1,4 @@
-CPP=clang++
+CPP=g++
 CFLAGS=-Wall -O3 -std=c++17
 INCLUDE=. ../framework/internal
 LDFLAGS=

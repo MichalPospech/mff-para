@@ -1,5 +1,5 @@
 TBBROOT=/usr/local/tbb
-CPP=clang++
+CPP=g++
 CFLAGS=-Wall -O3 -std=c++17
 INCLUDE=. ./internal $(TBBROOT)/include
 LDFLAGS=

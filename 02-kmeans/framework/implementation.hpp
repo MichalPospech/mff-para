@@ -84,7 +84,7 @@ class KMeans : public IKMeans<POINT, ASGN, DEBUG>
 		{
 			for (auto i = range.begin(); i != range.end(); ++i)
 			{
-				/clusters[(*assignments)[i]].add((*points)[i]);
+				clusters[(*assignments)[i]].add((*points)[i]);
 			}
 		}
 
