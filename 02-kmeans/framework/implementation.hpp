@@ -11,9 +11,36 @@ template <typename POINT = point_t, typename ASGN = std::uint8_t, bool DEBUG = f
 class KMeans : public IKMeans<POINT, ASGN, DEBUG>
 {
 	using coord_t = typename POINT::coord_t;
+	class cluster
+
+	{
+
+	public:
+		std::size_t count;
+		POINT total;
+		void add(const POINT &point)
+		{
+			total.x += point.x;
+			total.y += point.y;
+			++count;
+		}
+
+		POINT get_new_centroid(const POINT &original)
+		{
+			POINT point = original;
+			if (count > 0)
+			{
+				point.x = total.x / (coord_t)count;
+				point.y = total.y / (coord_t)count;
+			}
+			return point;
+		}
+	};
+
 	std::vector<coord_t> distances;
 	std::size_t k;
 	std::size_t points;
+	tbb::combinable<std::vector<cluster>> clusters;
 
 	coord_t distance(const POINT &point, const POINT &centroid)
 	{
@@ -27,77 +54,18 @@ class KMeans : public IKMeans<POINT, ASGN, DEBUG>
 		auto point = points[point_index];
 		coord_t minDist = distance(point, centroids[0]);
 		std::size_t nearest = 0;
-		for (std::size_t i = 1; i < centroids.size(); ++i) {
+		for (std::size_t i = 1; i < centroids.size(); ++i)
+		{
 			coord_t dist = distance(point, centroids[i]);
-			if (dist < minDist) {
+			if (dist < minDist)
+			{
 				minDist = dist;
 				nearest = i;
 			}
 		}
 		assignments[point_index] = nearest;
+		clusters.local()[nearest].add(point);
 	}
-
-	class cluster
-	{
-
-	public:
-		POINT original;
-		std::size_t count;
-		POINT total;
-		void add(const POINT &point)
-		{
-			total.x += point.x;
-			total.y += point.y;
-			++count;
-		}
-
-		POINT get_new_centroid()
-		{
-			POINT point = original;
-			if (count)
-			{
-				point.x = total.x / count;
-				point.y = total.y / count;
-			}
-			return point;
-		}
-	};
-
-	class reduce_chunk
-	{
-		const std::vector<POINT> *points;
-		const std::vector<ASGN> *assignments;
-
-	public:
-		std::vector<cluster> clusters;
-		reduce_chunk(std::size_t centroid_num, const std::vector<POINT> *points, const std::vector<ASGN> *assignments) : points(points), assignments(assignments), clusters(centroid_num) {}
-
-		reduce_chunk(reduce_chunk &chunk, tbb::split) : points(chunk.points), assignments(chunk.assignments), clusters(chunk.clusters.size())
-		{
-			for (std::size_t i = 0; i < clusters.size(); i++)
-			{
-				clusters[i].original = chunk.clusters[i].original;
-			}
-		}
-		template <typename TRange>
-		void operator()(const TRange &range)
-		{
-			for (auto i = range.begin(); i != range.end(); ++i)
-			{
-				clusters[(*assignments)[i]].add((*points)[i]);
-			}
-		}
-
-		void join(reduce_chunk &chunk)
-		{
-			for (std::size_t i = 0; i < clusters.size(); i++)
-			{
-				clusters[i].total.x += chunk.clusters[i].total.x;
-				clusters[i].total.y += chunk.clusters[i].total.y;
-				clusters[i].count += chunk.clusters[i].count;
-			}
-		}
-	};
 
 public:
 	/*
@@ -109,9 +77,10 @@ public:
 	virtual void
 	init(std::size_t points, std::size_t k, std::size_t iters)
 	{
-		distances = std::vector<coord_t>(points * k);
-		this->k = k;
-		this->points = points;
+		clusters.clear();
+		clusters = tbb::combinable<std::vector<cluster>>([k]() {
+			return std::vector<cluster>(k);
+		});
 	}
 
 	/*
@@ -129,19 +98,33 @@ public:
 						 std::vector<POINT> &centroids, std::vector<ASGN> &assignments)
 	{
 		centroids.resize(k);
-		std::copy(points.begin(), points.begin() + k, centroids.begin());
+		for (size_t i = 0; i < k; i++)
+		{
+			centroids[i] = points[i];
+		}
+
 		assignments.resize(points.size());
 		for (std::size_t i = 0; i < iters; i++)
 		{
+			clusters.clear();
 			tbb::parallel_for(tbb::blocked_range<std::size_t>(0, points.size(), 1024), [&](auto &&range) {
 				for (auto i = range.begin(); i != range.end(); ++i)
 					assign_cluster(centroids, points, i, assignments);
 			});
-			auto reducer = reduce_chunk(k, &points, &assignments);
-			tbb::parallel_reduce(tbb::blocked_range<std::size_t>(0, points.size(), 1024), reducer);
+			auto calculated_clusters = clusters.combine([k](auto v1, auto v2) {
+				for (size_t i = 0; i < k; i++)
+				{
+					v1[i].total.x += v2[i].total.x;
+					v1[i].total.y += v2[i].total.y;
+					v1[i].count += v2[i].count;
+				}
+				return v1;
+			});
 			for (size_t i = 0; i < k; i++)
 			{
-				centroids[i] = reducer.clusters[i].get_new_centroid();
+				if (DEBUG)
+					std::cout << i << " " << calculated_clusters[i].count << std::endl;
+				centroids[i] = calculated_clusters[i].get_new_centroid(centroids[i]);
 			}
 		}
 	}
