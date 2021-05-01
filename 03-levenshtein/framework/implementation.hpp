@@ -7,13 +7,13 @@
 
 #include <utility>
 #include <algorithm>
-
-#define BLOCK_SIZE 1024
+#include <omp.h>
 
 template <typename C = char, typename DIST = std::size_t, bool DEBUG = false>
 class EditDistance : public IEditDistance<C, DIST, DEBUG>
 {
 private:
+	std::size_t block_size = 1024;
 	std::vector<DIST> distances;
 	DIST len1;
 	DIST len2;
@@ -52,11 +52,10 @@ public:
 		{
 			std::swap(len1, len2);
 		}
+		block_size = 2048;
+		std::size_t num_threads = omp_get_max_threads();
 		this->len1 = len1;
 		this->len2 = len2;
-		num_blocks1 = len1 / BLOCK_SIZE;
-		num_blocks2 = len2 / BLOCK_SIZE;
-		num_diags = num_blocks1 + num_blocks2 - 1;
 		distances.resize(len1 + len2 + 1);
 		for (size_t i = len2 + 1; i < len2 + len1 + 2; i++)
 		{
@@ -66,8 +65,15 @@ public:
 		{
 			distances[i] = len2 - i;
 		}
-		max_blocks = (num_blocks1 > num_blocks2) ? num_blocks1 : num_blocks2;
-		min_blocks = (num_blocks1 < num_blocks2) ? num_blocks1 : num_blocks2;
+		do
+		{
+			block_size /= 2;
+			num_blocks1 = len1 / block_size;
+			num_blocks2 = len2 / block_size;
+			num_diags = num_blocks1 + num_blocks2 - 1;
+			max_blocks = (num_blocks1 > num_blocks2) ? num_blocks1 : num_blocks2;
+			min_blocks = (num_blocks1 < num_blocks2) ? num_blocks1 : num_blocks2;
+		} while (max_blocks / num_threads < 4);
 	};
 
 	/*
@@ -91,10 +97,10 @@ public:
 
 				std::size_t x_index = (i < min_blocks) ? j : (i - min_blocks + 1 + j);
 				std::size_t y_index = (i < min_blocks) ? (i - j) : (min_blocks - 1 - j);
-				std::size_t x1 = x_index * BLOCK_SIZE;
-				std::size_t y1 = y_index * BLOCK_SIZE;
-				std::size_t x2 = x1 + BLOCK_SIZE;
-				std::size_t y2 = y1 + BLOCK_SIZE;
+				std::size_t x1 = x_index * block_size;
+				std::size_t y1 = y_index * block_size;
+				std::size_t x2 = x1 + block_size;
+				std::size_t y2 = y1 + block_size;
 				std::size_t start_index = len2 - y2 + x1;
 				calculate_submatrix(s1, s2, x1, x2, y1, y2, start_index);
 			}
