@@ -73,7 +73,7 @@ public:
 			num_diags = num_blocks1 + num_blocks2 - 1;
 			max_blocks = (num_blocks1 > num_blocks2) ? num_blocks1 : num_blocks2;
 			min_blocks = (num_blocks1 < num_blocks2) ? num_blocks1 : num_blocks2;
-		} while (max_blocks / num_threads < 4);
+		} while (max_blocks / num_threads <= 4);
 	};
 
 	/*
