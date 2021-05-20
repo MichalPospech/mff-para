@@ -1,4 +1,4 @@
-CPP=g++
+CPP=clang++
 NVCC=/opt/cuda/bin/nvcc
 CFLAGS=-Wall -O3 -std=c++17
 INCLUDE=/opt/cuda/include ./internal .
