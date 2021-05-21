@@ -135,8 +135,8 @@ int main(int argc, char **argv)
 		real_t tolerance = (real_t)args.getArgFloat("verify_tolerance").getValue();
 
 		Verifier<real_t, index_t, length_t> *verifier = (verify)
-			? (new VerifierFull<real_t, index_t, length_t>(tolerance, verbose, 10))
-			: (new Verifier<real_t, index_t, length_t>(tolerance, verbose, 10));
+			? (new VerifierFull<real_t, index_t, length_t>(tolerance, verbose, 100))
+			: (new Verifier<real_t, index_t, length_t>(tolerance, verbose, 100));
 		verifier->init(graph, modelParameters);
 		std::vector< Point<real_t> > velocities;
 

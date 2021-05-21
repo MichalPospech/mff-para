@@ -7,6 +7,7 @@
 #include <data.hpp>
 
 #include <cuda_runtime.h>
+#include <iostream>
 
 /*
  * Final implementation of the tested program.
@@ -40,10 +41,10 @@ public:
 		CUCH(cudaSetDevice(0));
 
 		CUCH(cudaMalloc(&cup_edges_, edges.size() * sizeof(edge_t)));
-		CUCH(cudaMemcpyAsync(cup_edges_, edges.data(), edges.size(), cudaMemcpyKind::cudaMemcpyHostToDevice));
+		CUCH(cudaMemcpyAsync(cup_edges_, edges.data(), edges.size()*sizeof(edge_t), cudaMemcpyKind::cudaMemcpyHostToDevice));
 
 		CUCH(cudaMalloc(&cup_lengths_, lengths.size() * sizeof(LEN_T)));
-		CUCH(cudaMemcpyAsync(cup_lengths_, lengths.data(), lengths.size(), cudaMemcpyKind::cudaMemcpyHostToDevice));
+		CUCH(cudaMemcpyAsync(cup_lengths_, lengths.data(), lengths.size()*sizeof(LEN_T), cudaMemcpyKind::cudaMemcpyHostToDevice));
 
 		CUCH(cudaMalloc(&cup_velocities_, points * sizeof(point_t)));
 		CUCH(cudaMemsetAsync(cup_velocities_, 0, points * sizeof(point_t)));
@@ -56,17 +57,18 @@ public:
 	{
 		if (!iter_num)
 		{
-			CUCH(cudaMemcpy(cup_points_, points.data(), points.size(), cudaMemcpyKind::cudaMemcpyHostToDevice));
+			CUCH(cudaMemcpy(cup_points_, points.data(), points_count_ * sizeof(point_t), cudaMemcpyKind::cudaMemcpyHostToDevice));
 		}
 		step(cup_points_, cup_edges_, cup_lengths_, cup_velocities_, this->mParams, points_count_, edge_count_);
 		++iter_num;
-		CUCH(cudaMemcpy(points.data(), cup_points_, points.size(), cudaMemcpyKind::cudaMemcpyDeviceToHost));
+		CUCH(cudaMemcpy(points.data(), cup_points_, points_count_ * sizeof(point_t), cudaMemcpyKind::cudaMemcpyDeviceToHost));
 	}
 
 	virtual void getVelocities(std::vector<point_t> &velocities)
 	{
-		velocities.reserve(points_count_);
-		CUCH(cudaMemcpy(velocities.data(), cup_velocities_, points_count_, cudaMemcpyKind::cudaMemcpyDeviceToHost));
+		velocities.resize(points_count_);
+
+		CUCH(cudaMemcpy(velocities.data(), cup_velocities_, points_count_ * sizeof(point_t), cudaMemcpyKind::cudaMemcpyDeviceToHost));
 	}
 };
 
