@@ -37,13 +37,8 @@ __global__ void simulate_repulsion(const Point<double>* points,  Point<double>* 
 		f_y += (f * -y_diff);
 		f_x += (f * -x_diff);
 	}
-	/*
-	atomicAdd(&(velocities[idx].x), f_x * time_quantum / vertex_mass);
-	atomicAdd(&(velocities[idx].y), f_y * time_quantum / vertex_mass);
-	*/
 	velocities[idx].x+= f_x * time_quantum / vertex_mass;
 	velocities[idx].y+= f_y * time_quantum / vertex_mass;
-
 }
 
 __global__ void simulate_movement(Point<double>* points,  Point<double>* velocities, double time_quantum, double slowdown){
