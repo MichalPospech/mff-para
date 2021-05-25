@@ -1,2 +1,8 @@
 */bin
 */obj
+05-spark/.bloop/*
+05-spark/.vscode/*
+05-spark/project/*
+05-spark/target/*
+05-spark/.metals/*
+
